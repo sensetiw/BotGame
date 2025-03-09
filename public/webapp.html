@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AGI Companion</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+    #register, #game, #feed, #stats { display: none; flex-direction: column; gap: 10px; }
+    button { padding: 10px; margin: 5px; }
+    #statsList { list-style: none; padding: 0; }
+  </style>
+</head>
+<body>
+  <div id="register">
+    <input id="username" placeholder="Ваш ник" />
+    <input id="agiName" placeholder="Имя AGI (до 8 символов)" />
+    <button onclick="register()">Создать</button>
+  </div>
+  <div id="game">
+    <img id="agi-image" width="100" height="100" />
+    <h2>Ваш AGI: <span id="agiNameDisplay"></span></h2>
+    <p>Интеллект: <span id="intellect"></span></p>
+    <p>Энергия: <span id="energy"></span></p>
+    <p>Репутация: <span id="reputation"></span></p>
+    <p>Буйты: <span id="buytes"></span></p>
+    <button onclick="feed()">Покормить</button>
+    <button onclick="getBonus()">Ежедневный бонус</button>
+    <button onclick="showStats()">Статистика</button>
+  </div>
+  <div id="feed">
+    <p id="questionText"></p>
+    <button onclick="answer('a')">a</button>
+    <button onclick="answer('b')">b</button>
+    <button onclick="answer('c')">c</button>
+  </div>
+  <div id="stats">
+    <h2>Топ AGI</h2>
+    <ul id="statsList"></ul>
+    <button onclick="backToGame()">Назад</button>
+  </div>
+
+  <script>
+    const domain = 'https://sensetiw.xyz';
+    let telegramId;
+    let currentQuestionId;
+
+    // Инициализация Telegram Web App
+    window.Telegram.WebApp.ready();
+    telegramId = window.Telegram.WebApp.initDataUnsafe.user.id;
+
+    // Проверка статуса при запуске
+    window.onload = () => {
+      console.log('Checking status on load for telegramId:', telegramId);
+      fetch(`${domain}/status/${telegramId}`).then(res => {
+        console.log('Status response status:', res.status);
+        if (!res.ok) {
+          if (res.status === 404) {
+            // Пользователь не зарегистрирован, показываем регистрацию
+            document.getElementById('register').style.display = 'block';
+          } else {
+            throw new Error(`HTTP error! Status: ${res.status}`);
+          }
+        } else {
+          return res.json();
+        }
+      }).then(data => {
+        if (data) {
+          // Пользователь зарегистрирован, показываем экран AGI
+          console.log('User found, showing AGI screen:', data);
+          document.getElementById('game').style.display = 'flex';
+          updateStatus(data);
+        }
+      }).catch(err => {
+        console.error('Status fetch error:', err);
+        document.getElementById('register').style.display = 'block'; // На случай ошибки показываем регистрацию
+      });
+    };
+
+    function register() {
+      const username = document.getElementById('username').value;
+      const agiName = document.getElementById('agiName').value;
+      console.log('Register attempt:', { telegramId, username, agiName });
+      fetch(`${domain}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegramId, username, agiName })
+      }).then(res => {
+        console.log('Register response status:', res.status);
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+        return res.json();
+      }).then(data => {
+        console.log('Register response data:', data);
+        if (data.success) {
+          alert('AGI создан!');
+          document.getElementById('register').style.display = 'none';
+          document.getElementById('game').style.display = 'flex';
+          updateStatus(data.agi);
+        } else {
+          alert(data.error);
+        }
+      }).catch(err => console.error('Register fetch error:', err));
+    }
+
+    function updateStatus(data) {
+      console.log('Updating status with:', data);
+      document.getElementById('agiNameDisplay').textContent = data.name;
+      document.getElementById('intellect').textContent = data.intellect;
+      document.getElementById('energy').textContent = data.energy;
+      document.getElementById('reputation').textContent = data.reputation;
+      document.getElementById('buytes').textContent = data.buytes;
+      updateAgiImage(Math.floor(data.intellect / 100)); // Используем level из данных
+    }
+
+    function feed() {
+      console.log('Feed attempt for telegramId:', telegramId);
+      fetch(`${domain}/feed/${telegramId}`).then(res => {
+        console.log('Feed response status:', res.status);
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+        return res.json();
+      }).then(data => {
+        console.log('Feed response data:', data);
+        document.getElementById('game').style.display = 'none';
+        document.getElementById('feed').style.display = 'flex';
+        document.getElementById('questionText').textContent = `${data.text} ${data.options.join(' ')}`;
+        currentQuestionId = data.id;
+      }).catch(err => console.error('Feed fetch error:', err));
+    }
+
+    function answer(choice) {
+      console.log('Answer attempt:', { telegramId, questionId: currentQuestionId, answer: choice });
+      fetch(`${domain}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegramId, questionId: currentQuestionId, answer: choice })
+      }).then(res => {
+        console.log('Answer response status:', res.status);
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+        return res.json();
+      }).then(data => {
+        console.log('Answer response data:', data);
+        alert(data.isCorrect ? 'Правильно! +5 интеллекта' : 'Неправильно! -5 интеллекта');
+        document.getElementById('feed').style.display = 'none';
+        document.getElementById('game').style.display = 'flex';
+        updateStatus({ name: document.getElementById('agiNameDisplay').textContent, ...data });
+      }).catch(err => console.error('Answer fetch error:', err));
+    }
+
+    function getBonus() {
+      console.log('GetBonus attempt for telegramId:', telegramId);
+      fetch(`${domain}/dailybonus`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegramId })
+      }).then(res => {
+        console.log('GetBonus response status:', res.status);
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+        return res.json();
+      }).then(data => {
+        console.log('GetBonus response data:', data);
+        if (data.success) {
+          alert('Бонус +10 Буйтов!');
+          updateStatus({ ...data, name: document.getElementById('agiNameDisplay').textContent });
+        } else {
+          alert(data.error);
+        }
+      }).catch(err => console.error('GetBonus fetch error:', err));
+    }
+
+    function showStats() {
+      console.log('ShowStats attempt');
+      fetch(`${domain}/stats`).then(res => {
+        console.log('Stats response status:', res.status);
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+        return res.json();
+      }).then(data => {
+        console.log('Stats response data:', data);
+        document.getElementById('game').style.display = 'none';
+        document.getElementById('stats').style.display = 'block';
+        const list = document.getElementById('statsList');
+        list.innerHTML = data.map(agi => `<li>${agi.name}: ${agi.intellect}</li>`).join('');
+      }).catch(err => console.error('Stats fetch error:', err));
+    }
+
+    function backToGame() {
+      console.log('Back to game');
+      document.getElementById('stats').style.display = 'none';
+      document.getElementById('game').style.display = 'flex';
+      fetch(`${domain}/status/${telegramId}`).then(res => res.json()).then(updateStatus);
+    }
+
+    function updateAgiImage(level) {
+      console.log('Updating AGI image for level:', level);
+      const img = document.getElementById('agi-image');
+      if (level >= 10) img.src = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M20 40 Q50 20 80 40 Q50 60 20 40' fill='pink'/><circle cx='35' cy='35' r='10' fill='white'/><circle cx='65' cy='35' r='10' fill='white'/><circle cx='35' cy='35' r='5' fill='black'/><circle cx='65' cy='35' r='5' fill='black'/><path d='M50 60 L60 70 L40 70 Z' fill='yellow'/></svg>";
+      else if (level >= 5) img.src = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M20 40 Q50 20 80 40 Q50 60 20 40' fill='pink'/><circle cx='35' cy='35' r='10' fill='white'/><circle cx='65' cy='35' r='10' fill='white'/><circle cx='35' cy='35' r='5' fill='black'/><circle cx='65' cy='35' r='5' fill='black'/><circle cx='50' cy='60' r='5' fill='red'/></svg>";
+      else img.src = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M20 40 Q50 20 80 40 Q50 60 20 40' fill='pink'/><circle cx='35' cy='35' r='10' fill='white'/><circle cx='65' cy='35' r='10' fill='white'/><circle cx='35' cy='35' r='5' fill='black'/><circle cx='65' cy='35' r='5' fill='black'/></svg>";
+    }
+  </script>
+</body>
+</html>
